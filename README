@@ -1,0 +1,59 @@
+This package consists of a thorough benchmark for a containers package.
+
+Quick start
+===========
+To benchmark the installed version of containers, just do
+
+cd scripts
+sh benchmark.sh installed-containers none
+
+Running
+=======
+
+The benchmark is executed using scripts in scripts directory. The main
+executable is benchmark.sh, which is given several arguments:
+benchmark.sh
+  name_of_the_benchmark      -- date is added to it
+  containers_repo            -- repo with containers, write 'none' for
+                             --   system containers library
+  cabal_configure_opts       -- optional flags passed to cabal configure
+
+The benchmark.sh just calls other scripts:
+  compile.sh containers_repo cabal_configure_opts   -- builds the benchmark
+  run.sh name_of_the_benchmark                      -- run built benchmark
+  collect.pl name_of_benchmark      -- collect all results in one .csv file
+
+Other scripts:
+  see.sh < name_of_csv              -- formats the csv file for viewing
+  cmp.pl base_csv diff_csv          -- generate csv with comparison of two tests
+  cmp.sh base_csv diff_csv          -- formats the result of cmp.pl for viewing
+
+  ghc.sh containers_repo ghc_repo result_csv
+    -- Compiles the GHC repo with given containers and store results
+    -- the size of GHC and the memory allocation results of performance tests
+    -- are stored. These tests were once a regression, so we monitor them.
+    -- The GHC repo must be already booted and configured.
+
+
+Which implementation to benchmark
+=================================
+
+The benchmark can use system-installed containers package or any given repo.
+Because the criterion package used for benchmarking is using containers
+internally, we cannot safely expose the benchmarked implementation as
+Data.Map and others. Therefore we benchmark Container.{Map,Set,IntMap,IntSet}.
+The scripts/system_containers.sh and scripts/custom_containers.sh scripts
+chooses which implementation of containers is benchmarked.
+
+
+Benchmark design
+================
+
+Various input data are provided by InputData/*
+
+Various benchmark methods are provided by Benchmar/*
+
+As the different combinations of input data and containers result in different
+type signatures, we use CPP extension to put the input data and benchmark
+methods into one source file and let GHC to type-check for each combination of
+input data and container. This happens in Variants/*
