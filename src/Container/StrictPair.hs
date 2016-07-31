@@ -1,1 +1,0 @@
-module Container.StrictPair () where
