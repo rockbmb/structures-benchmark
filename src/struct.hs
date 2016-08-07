@@ -7,6 +7,7 @@ import           System.Environment                    (getArgs, withArgs)
 import           Control.DeepSeq                       (NFData)
 import           Criterion.Main
 import           Data.ByteString.Char8                 (ByteString, pack)
+import           Data.Foldable                         (foldr')
 import           Data.Hashable                         (Hashable)
 import qualified Data.Map.Lazy                   as ML
 import qualified Data.Map.Strict                 as MS
@@ -14,10 +15,6 @@ import qualified Data.IntMap.Lazy                as IL
 import qualified Data.IntMap.Strict              as IS
 import qualified Data.HashMap.Lazy               as HL
 import qualified Data.HashMap.Strict             as HS
-import qualified Data.Edison.Assoc.AssocList     as AL
-import qualified Data.Edison.Assoc.PatriciaLoMap as PM
-import qualified Data.Edison.Assoc.StandardMap   as SM
-import qualified Data.Edison.Assoc.TernaryTrie   as TT
 import           System.Random                         (mkStdGen, randomRs)
 
 ascBS :: Int -> Int -> [ByteString]
@@ -173,6 +170,22 @@ bench_foldlist_HS (_, c, _, _) = force $ HS.foldr (:) [] c
 bench_foldlist_HL (_, c, _, _) = force $ HL.foldr (:) [] c
   where force list = length list `seq` ()
 
+folderL a k accum = accum + (a + k)
+folderR k accum a = accum + (a + k)
+bench_foldWK_MS1 (_, c, _, _) = MS.foldlWithKey folderL 0 c `seq` ()
+bench_foldWK_MS2 (_, c, _, _) = MS.foldlWithKey' folderL 0 c `seq` ()
+bench_foldWK_MS3 (_, c, _, _) = MS.foldrWithKey folderR 0 c `seq` ()
+bench_foldWK_MS4 (_, c, _, _) = MS.foldrWithKey' folderR 0 c `seq` ()
+bench_foldWK_ML1 (_, c, _, _) = MS.foldlWithKey folderL 0 c `seq` ()
+bench_foldWK_ML2 (_, c, _, _) = MS.foldlWithKey' folderL 0 c `seq` ()
+bench_foldWK_ML3 (_, c, _, _) = MS.foldrWithKey folderR 0 c `seq` ()
+bench_foldWK_ML4 (_, c, _, _) = MS.foldrWithKey' folderR 0 c `seq` ()
+
+foldrer :: Int -> Int -> Int
+foldrer x y = x + y + 1
+bench_foldRS (l, _, _, _) = foldr' foldrer 0 l `seq` ()
+bench_foldRL (l, _, _, _) = foldr foldrer 0 l `seq` ()
+
 bench_criterion bnch =
   map (\(name, method, input) ->
           bench name (nf method input))
@@ -326,6 +339,28 @@ foldListBenches num =
                     ]
         ]
 
+foldBenches num =
+    defaultMain [
+        bgroup "foldr" [ intBench num "lazy foldr" MS.fromList bench_foldRL "foldr"
+                       , intBench num "strict foldr" MS.fromList bench_foldRS "foldr"
+                       ]
+        ]
+
+foldWKBenches num =
+    defaultMain [
+        bgroup "folder" [ bench_foldWKMS bench_foldWK_MS1 "lazy foldlWK"
+                        , bench_foldWKMS bench_foldWK_MS2 "strict foldrWK"
+                        , bench_foldWKMS bench_foldWK_MS3 "lazy foldrWK"
+                        , bench_foldWKMS bench_foldWK_MS4 "strict foldrWK"
+                        , bench_foldWKML bench_foldWK_ML1 "lazy foldlWK"
+                        , bench_foldWKML bench_foldWK_ML2 "strict foldlWK"
+                        , bench_foldWKML bench_foldWK_ML3 "lazy foldrWK"
+                        , bench_foldWKML bench_foldWK_ML4 "strict foldrWK"
+                        ]
+        ]
+    where bench_foldWKMS foldWK str = intBench num ("map strict " ++ str) MS.fromList foldWK "folder"
+          bench_foldWKML foldWK str = intBench num ("map lazy " ++str) ML.fromList foldWK "folder"
+
 x & f = f x
 
 benchDecider benchfun =
@@ -348,6 +383,10 @@ benchDecider benchfun =
             intersectionBenches
         "fold" -> do
             foldListBenches
+        "folder" -> do
+            foldWKBenches
+        "foldr" -> do
+            foldBenches
 
 main = do
   n : benchtype : benchfun : args <- getArgs
