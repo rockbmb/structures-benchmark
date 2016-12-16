@@ -1,30 +1,31 @@
+{-# LANGUAGE CPP           #-}
 {-# LANGUAGE BangPatterns  #-}
 {-# LANGUAGE TupleSections #-}
 
-module Main where
+module Benches where
 
-import           System.Environment                    (getArgs, withArgs)
-import           Control.DeepSeq                       (NFData)
+import           System.Environment              (getArgs, withArgs)
+import           Control.DeepSeq                 (NFData)
 import           Criterion.Main
-import           Data.ByteString.Char8                 (ByteString, pack)
-import           Data.Hashable                         (Hashable)
+import           Data.ByteString.Char8           (ByteString, pack)
+import           Data.Foldable                   (foldr')
+import           Data.Hashable                   (Hashable)
 import qualified Data.Map.Lazy                   as ML
 import qualified Data.Map.Strict                 as MS
 import qualified Data.IntMap.Lazy                as IL
 import qualified Data.IntMap.Strict              as IS
 import qualified Data.HashMap.Lazy               as HL
 import qualified Data.HashMap.Strict             as HS
-import qualified Data.Edison.Assoc.AssocList     as AL
-import qualified Data.Edison.Assoc.PatriciaLoMap as PM
-import qualified Data.Edison.Assoc.StandardMap   as SM
-import qualified Data.Edison.Assoc.TernaryTrie   as TT
-import           System.Random                         (mkStdGen, randomRs)
+import           System.Random                   (mkStdGen, randomRs)
+
+genBS :: (Int -> Int -> [String]) -> Int -> Int -> [ByteString]
+genBS genS strlen num = map pack $ genS strlen num
 
 ascBS :: Int -> Int -> [ByteString]
-ascBS strlen num = map pack $ ascS strlen num
+ascBS = genBS ascS
 
 rndBS :: Int -> Int -> [ByteString]
-rndBS strlen num = map pack $ rndS strlen num
+rndBS = genBS rndS
 
 ascS :: Int -> Int -> [String]
 ascS strlen num = take num $ iterate (snd . inc) $ replicate strlen 'a'
@@ -44,134 +45,128 @@ asc len = [1..len]
 rnd :: Int -> [Int]
 rnd len = take len $ randomRs (0,1000 * len) $ mkStdGen 1234
 
-bench_insert_MS (list, _, _, _) = go MS.empty list
-   where go !c [] = c
-         go !c (x:xs) = go (MS.insert x x c) xs
-bench_insert_ML (list, _, _, _) = go ML.empty list
-   where go !c [] = c
-         go !c (x:xs) = go (ML.insert x x c) xs
-bench_insert_IS (list, _, _, _) = go IS.empty list
-   where go !c [] = c
-         go !c (x:xs) = go (IS.insert x x c) xs
-bench_insert_IL (list, _, _, _) = go IL.empty list
-   where go !c [] = c
-         go !c (x:xs) = go (IL.insert x x c) xs
-bench_insert_HS (list, _, _, _) = go HS.empty list
-   where go !c [] = c
-         go !c (x:xs) = go (HS.insert x x c) xs
-bench_insert_HL (list, _, _, _) = go HL.empty list
-   where go !c [] = c
-         go !c (x:xs) = go (HL.insert x x c) xs
+#define insert(NAME, FUN) \
+  NAME (list, _, _, _) = go mempty list \
+    where go !c [] = c ;\
+          go !c (x:xs) = go (FUN x x c) xs \
 
-bench_lookup_MS (list, c, _, _) = go c list
-  where go c [] = c
-        go c (x:xs) = MS.lookup x c `seq` go c xs
-bench_lookup_ML (list, c, _, _) = go c list
-  where go c [] = c
-        go c (x:xs) = ML.lookup x c `seq` go c xs
-bench_lookup_IS (list, c, _, _) = go c list
-  where go c [] = c
-        go c (x:xs) = IS.lookup x c `seq` go c xs
-bench_lookup_IL (list, c, _, _) = go c list
-  where go c [] = c
-        go c (x:xs) = IS.lookup x c `seq` go c xs
-bench_lookup_HL (list, c, _, _) = go c list
-  where go c [] = c
-        go c (x:xs) = HL.lookup x c `seq` go c xs
-bench_lookup_HS (list, c, _, _) = go c list
-  where go c [] = c
-        go c (x:xs) = HS.lookup x c `seq` go c xs
+insert(bench_insert_MS, MS.insert)
+insert(bench_insert_ML, ML.insert)
+insert(bench_insert_IS, IS.insert)
+insert(bench_insert_IL, IL.insert)
+insert(bench_insert_HS, HS.insert)
+insert(bench_insert_HL, HL.insert)
 
-bench_delete_MS (list, c, _, _) = go c list
-  where go !c [] = c
-        go !c (x:xs) = go (MS.delete x c) xs
-bench_delete_ML (list, c, _, _) = go c list
-  where go !c [] = c
-        go !c (x:xs) = go (ML.delete x c) xs
-bench_delete_IS (list, c, _, _) = go c list
-  where go !c [] = c
-        go !c (x:xs) = go (IS.delete x c) xs
-bench_delete_IL (list, c, _, _) = go c list
-  where go !c [] = c
-        go !c (x:xs) = go (IL.delete x c) xs
-bench_delete_HS (list, c, _, _) = go c list
-  where go !c [] = c
-        go !c (x:xs) = go (HS.delete x c) xs
-bench_delete_HL (list, c, _, _) = go c list
-  where go !c [] = c
-        go !c (x:xs) = go (HL.delete x c) xs
+#define lookup(NAME, FUN) \
+  NAME (list, c, _, _) = go c list \
+    where go c [] = c ;\
+          go c (x:xs) = FUN x c `seq` go c xs \
 
-bench_alterinsert_MS (list, _, _, _) = go MS.empty list
-  where go !c [] = c
-        go !c (x:xs) = go (MS.alter (const $ Just x) x c) xs
-bench_alterinsert_ML (list, _, _, _) = go ML.empty list
-  where go !c [] = c
-        go !c (x:xs) = go (ML.alter (const $ Just x) x c) xs
-bench_alterinsert_IS (list, _, _, _) = go IS.empty list
-  where go !c [] = c
-        go !c (x:xs) = go (IS.alter (const $ Just x) x c) xs
-bench_alterinsert_IL (list, _, _, _) = go IL.empty list
-  where go !c [] = c
-        go !c (x:xs) = go (IL.alter (const $ Just x) x c) xs
-bench_alterinsert_HS (list, _, _, _) = go HS.empty list
-  where go !c [] = c
-        go !c (x:xs) = go (HS.alter (const $ Just x) x c) xs
-bench_alterinsert_HL (list, _, _, _) = go HL.empty list
-  where go !c [] = c
-        go !c (x:xs) = go (HL.alter (const $ Just x) x c) xs
+lookup(bench_lookup_MS, MS.lookup)
+lookup(bench_lookup_ML, ML.lookup)
+lookup(bench_lookup_IS, IS.lookup)
+lookup(bench_lookup_IL, IL.lookup)
+lookup(bench_lookup_HS, HS.lookup)
+lookup(bench_lookup_HL, HL.lookup)
 
-bench_alterdelete_MS (list, c, _, _) = go c list
-  where go !c [] = ()
-        go !c (x:xs) = go (MS.alter (const $ Nothing) x c) xs
-bench_alterdelete_ML (list, c, _, _) = go c list
-  where go !c [] = ()
-        go !c (x:xs) = go (ML.alter (const $ Nothing) x c) xs
-bench_alterdelete_IL (list, c, _, _) = go c list
-  where go !c [] = ()
-        go !c (x:xs) = go (IL.alter (const $ Nothing) x c) xs
-bench_alterdelete_IS (list, c, _, _) = go c list
-  where go !c [] = ()
-        go !c (x:xs) = go (IS.alter (const $ Nothing) x c) xs
-bench_alterdelete_HL (list, c, _, _) = go c list
-  where go !c [] = ()
-        go !c (x:xs) = go (HL.alter (const $ Nothing) x c) xs
-bench_alterdelete_HS (list, c, _, _) = go c list
-  where go !c [] = ()
-        go !c (x:xs) = go (HS.alter (const $ Nothing) x c) xs
+#define delete(NAME, FUN) \
+  NAME (list, c, _, _) = go c list \
+    where go !c [] = c ;\
+          go !c (x:xs) = go (FUN x c) xs \
 
-bench_union_MS (_, _, c_even, c_odd) = MS.union c_even c_odd
-bench_union_ML (_, _, c_even, c_odd) = ML.union c_even c_odd
-bench_union_IS (_, _, c_even, c_odd) = IS.union c_even c_odd
-bench_union_IL (_, _, c_even, c_odd) = IL.union c_even c_odd
-bench_union_HS (_, _, c_even, c_odd) = HS.union c_even c_odd
-bench_union_HL (_, _, c_even, c_odd) = HL.union c_even c_odd
+delete(bench_delete_MS, MS.delete)
+delete(bench_delete_ML, ML.delete)
+delete(bench_delete_IS, IS.delete)
+delete(bench_delete_IL, IL.delete)
+delete(bench_delete_HS, HS.delete)
+delete(bench_delete_HL, HL.delete)
 
-bench_difference_MS (_, c, c_even, _) = MS.difference c c_even
-bench_difference_ML (_, c, c_even, _) = ML.difference c c_even
-bench_difference_IS (_, c, c_even, _) = IS.difference c c_even
-bench_difference_IL (_, c, c_even, _) = IL.difference c c_even
-bench_difference_HS (_, c, c_even, _) = HS.difference c c_even
-bench_difference_HL (_, c, c_even, _) = HL.difference c c_even
+{-#define alter_insert(Name, Fun) \
+  Name (list, _, _, _) = go mempty list \
+    where go !c [] = c ;\
+          go !c (x:xs) = go (Fun (const $ Just x) x c) xs \
 
-bench_intersection_MS (_, c, c_even, _) = MS.intersection c c_even
-bench_intersection_ML (_, c, c_even, _) = ML.intersection c c_even
-bench_intersection_IS (_, c, c_even, _) = IS.intersection c c_even
-bench_intersection_IL (_, c, c_even, _) = IL.intersection c c_even
-bench_intersection_HS (_, c, c_even, _) = HS.intersection c c_even
-bench_intersection_HL (_, c, c_even, _) = HL.intersection c c_even
+alter_insert(bench_alter_insert_MS, MS.alter_insert)
+alter_insert(bench_alter_insert_ML, ML.alter_insert)
+alter_insert(bench_alter_insert_IS, IS.alter_insert)
+alter_insert(bench_alter_insert_IL, IL.alter_insert)
+alter_insert(bench_alter_insert_HS, HS.alter_insert)
+alter_insert(bench_alter_insert_HL, HL.alter_insert)-}
 
-bench_foldlist_MS (_, c, _, _) = force $ MS.foldr (:) [] c
-  where force list = length list `seq` ()
-bench_foldlist_ML (_, c, _, _) = force $ ML.foldr (:) [] c
-  where force list = length list `seq` ()
-bench_foldlist_IS (_, c, _, _) = force $ IS.foldr (:) [] c
-  where force list = length list `seq` ()
-bench_foldlist_IL (_, c, _, _) = force $ IL.foldr (:) [] c
-  where force list = length list `seq` ()
-bench_foldlist_HS (_, c, _, _) = force $ HS.foldr (:) [] c
-  where force list = length list `seq` ()
-bench_foldlist_HL (_, c, _, _) = force $ HL.foldr (:) [] c
-  where force list = length list `seq` ()
+{-#define alter_delete(NAME, FUN) \
+  NAME (list, c, _, _) = go c list \
+    where go !c [] = () ;\
+          go !c (x:xs) = go (FUN (const $ Nothing) x c) xs \
+}
+
+alter_delete(bench_alter_delete_MS, MS.alter_delete)
+alter_delete(bench_alter_delete_ML, ML.alter_delete)
+alter_delete(bench_alter_delete_IS, IS.alter_delete)
+alter_delete(bench_alter_delete_IL, IL.alter_delete)
+alter_delete(bench_alter_delete_HS, HS.alter_delete)
+alter_delete(bench_alter_delete_HL, HL.alter_delete)-}
+
+#define union(NAME) \
+  bench_union_NAME (_, _, c_even, c_odd) = NAME.union c_even c_odd \
+
+union(MS)
+union(ML)
+union(IS)
+union(IL)
+union(HS)
+union(HL)
+
+#define difference(NAME) \
+  bench_difference_NAME (_, c, c_even, _) = NAME.difference c c_even \
+
+difference(MS)
+difference(ML)
+difference(IS)
+difference(IL)
+difference(HS)
+difference(HL)
+
+#define intersection(NAME) \
+  bench_intersection_NAME (_, c, c_even, _) = NAME.intersection c c_even \
+
+intersection(MS)
+intersection(ML)
+intersection(IS)
+intersection(IL)
+intersection(HS)
+intersection(HL)
+
+#define foldlist(NAME) \
+  bench_foldlist_NAME (_, c, _, _) = force $ NAME.foldr (:) [] c \
+    where force list = length list `seq` ()
+
+foldlist(MS)
+foldlist(ML)
+foldlist(IS)
+foldlist(IL)
+foldlist(HS)
+foldlist(HL)
+
+folderL a k accum = accum + (a + k)
+folderR k accum a = accum + (a + k)
+
+#define foldWK(NAME1, NAME2, NAME3, NAME4, FUN1, FUN2, FUN3, FUN4) \
+  NAME1 (_, c, _, _) = FUN1 folderL 0 c `seq` () ;\
+  NAME2 (_, c, _, _) = FUN2 folderL 0 c `seq` () ;\
+  NAME3 (_, c, _, _) = FUN3 folderR 0 c `seq` () ;\
+  NAME4 (_, c, _, _) = FUN4 folderR 0 c `seq` () ;\
+
+foldWK(bench_foldWK_MS1, bench_foldWK_MS2, bench_foldWK_MS3, bench_foldWK_MS4, MS.foldlWithKey, MS.foldlWithKey', MS.foldrWitKey, MS.foldrWithKey')
+foldWK(bench_foldWK_ML1, bench_foldWK_ML2, bench_foldWK_ML3, bench_foldWK_ML4, ML.foldlWithKey, ML.foldlWithKey', ML.foldrWitKey, ML.foldrWithKey')
+foldWK(bench_foldWK_IS1, bench_foldWK_IS2, bench_foldWK_IS3, bench_foldWK_IS4, IS.foldlWithKey, IS.foldlWithKey', IS.foldrWitKey, IS.foldrWithKey')
+foldWK(bench_foldWK_IL1, bench_foldWK_IL2, bench_foldWK_IL3, bench_foldWK_IL4, IL.foldlWithKey, IL.foldlWithKey', IL.foldrWitKey, IL.foldrWithKey')
+foldWK(bench_foldWK_HS1, bench_foldWK_HS2, bench_foldWK_HS3, bench_foldWK_HS4, HS.foldlWithKey, HS.foldlWithKey', HS.foldrWitKey, HS.foldrWithKey')
+foldWK(bench_foldWK_HL1, bench_foldWK_HL2, bench_foldWK_HL3, bench_foldWK_HL4, HL.foldlWithKey, HL.foldlWithKey', HL.foldrWitKey, HL.foldrWithKey')
+
+foldrer :: Int -> Int -> Int
+foldrer x y = x + y + 1
+bench_foldRS (l, _, _, _) = foldr' foldrer 0 l `seq` ()
+bench_foldRL (l, _, _, _) = foldr foldrer 0 l `seq` ()
 
 bench_criterion bnch =
   map (\(name, method, input) ->
@@ -326,6 +321,28 @@ foldListBenches num =
                     ]
         ]
 
+foldBenches num =
+    defaultMain [
+        bgroup "foldr" [ intBench num "lazy foldr" MS.fromList bench_foldRL "foldr"
+                       , intBench num "strict foldr" MS.fromList bench_foldRS "foldr"
+                       ]
+        ]
+
+foldWKBenches num =
+    defaultMain [
+        bgroup "folder" [ bench_foldWKMS bench_foldWK_MS1 "lazy foldlWK"
+                        , bench_foldWKMS bench_foldWK_MS2 "strict foldrWK"
+                        , bench_foldWKMS bench_foldWK_MS3 "lazy foldrWK"
+                        , bench_foldWKMS bench_foldWK_MS4 "strict foldrWK"
+                        , bench_foldWKML bench_foldWK_ML1 "lazy foldlWK"
+                        , bench_foldWKML bench_foldWK_ML2 "strict foldlWK"
+                        , bench_foldWKML bench_foldWK_ML3 "lazy foldrWK"
+                        , bench_foldWKML bench_foldWK_ML4 "strict foldrWK"
+                        ]
+        ]
+    where bench_foldWKMS foldWK str = intBench num ("map strict " ++ str) MS.fromList foldWK "folder"
+          bench_foldWKML foldWK str = intBench num ("map lazy " ++ str) ML.fromList foldWK "folder"
+
 x & f = f x
 
 benchDecider benchfun =
@@ -348,6 +365,10 @@ benchDecider benchfun =
             intersectionBenches
         "fold" -> do
             foldListBenches
+        "folder" -> do
+            foldWKBenches
+        "foldr" -> do
+            foldBenches
 
 main = do
   n : benchtype : benchfun : args <- getArgs
